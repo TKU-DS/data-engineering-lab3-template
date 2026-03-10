@@ -1,46 +1,33 @@
 # Lab 3: Data Quality & Anomaly Detection
 
 ## 📌 Objective
-In the real world, edge sensors degrade, suffer from electromagnetic interference, or experience sudden "flash crashes" in their readings. If we allow this corrupted data to enter our pipeline, downstream AI models will produce confident but incorrect predictions (Garbage In, Garbage Out).
+In the real world, edge sensors suffer from electromagnetic interference or sudden "flash crashes". If we allow this corrupted data to enter our pipeline, downstream AI models will produce garbage predictions.
 
-This lab demonstrates **Robust Statistics** on streaming data. You will implement a Sliding Window and use the **Median Absolute Deviation (MAD)** algorithm to detect and reject point anomalies in real-time, preventing them from corrupting the edge database.
+This lab demonstrates **Robust Statistics**. You will implement a Sliding Window and use the **Modified Z-Score** to detect and reject point anomalies in real-time, matching the architecture discussed in Lecture 3.
 
 ## 🛠️ Environment Setup
 1. Launch your **GitHub Codespaces** from this repository.
 2. Open the `lab3_anomaly_detection.py` file.
 
 ## 🚀 Instructions
-1. Review the `unstable_sensor_stream()` function. Notice it occasionally fires massive outliers (0.0 or 100.0) simulating hardware spikes.
-2. We use `collections.deque(maxlen=WINDOW_SIZE)` to create an $\mathcal{O}(W)$ sliding window.
-3. Locate `TODO 1` to `TODO 5` inside `process_with_mad_filter()`.
-4. Implement the MAD logic:
-    * Find the median of the current window.
-    * Find the absolute difference of each point from that median.
-    * The MAD is the median of those differences.
-    * If the incoming `value` is more than $3 \times \text{MAD}$ away from the current median, **reject it** (do not save it, do not add it to the window).
-5. Run the script in the terminal:
+1. We use `collections.deque(maxlen=WINDOW_SIZE)` to create an $\mathcal{O}(W)$ sliding window.
+2. Locate `TODO 1` to `TODO 5` inside `process_with_mad_filter()`.
+3. Implement the exact math from the lecture:
+    * Calculate the Median of the window.
+    * Calculate the MAD.
+    * Calculate the Modified Z-Score: $M = 0.6745 \times (x - \text{median}) / \text{MAD}$
+    * If $|M| > 3.5$, **reject the point** (do not add it to the window).
+    * If $|M| \le 3.5$, **accept the point** (add it to the window and write to CSV).
+4. Run the script:
 
     ```bash
     python lab3_anomaly_detection.py
     ```
 
-6. Open `raw_noisy_data.csv` and `clean_filtered_data.csv` in your editor to visually verify that the spikes were removed.
-
 ## 🧠 Reflection Questions
-1. **The Flaw of Averages**: Why didn't we just use the Mean and Standard Deviation (Z-score) to detect anomalies? What happens to the Mean if a massive outlier enters the sliding window?
-2. **Pipeline Resilience**: In our code, when we detect an anomaly, we drop it entirely. In a real-world factory monitoring system, is it always safe to just silently drop anomalies? How might you improve this architecture? (e.g., logging the drops).
+1. **The Breakdown Point**: Why is MAD mathematically superior to the Standard Deviation ($\sigma$) for this specific task? What would happen to the threshold if a massive spike entered a standard Z-score calculation?
+2. **Safe Appends**: Why is it critical that we only `window.append(value)` *after* we have verified it is not an anomaly? 
 
 ## ✅ Submission Guidelines
-1. Ensure your filter successfully blocks the anomalies without crashing.
-2. Commit your changes:
-
-    ```bash
-    git add lab3_anomaly_detection.py
-    git commit -m "Complete Lab 3 MAD anomaly filter"
-    ```
-
-3. Push the code:
-
-    ```bash
-    git push origin main
-    ```
+1. Ensure your filter successfully blocks anomalies.
+2. Commit and push your changes to GitHub.
