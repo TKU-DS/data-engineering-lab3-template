@@ -2,85 +2,104 @@ import time
 import random
 import csv
 import os
+import statistics
+from collections import deque
 
 # ==========================================
-# Data Engineering - Lab 2: Data Acquisition & Downsampling
+# Data Engineering - Lab 3: Anomaly Detection & Edge Robustness
 # ==========================================
-# Objective: Handle high-frequency data streams without overwhelming memory or I/O.
-# Task: Implement a chunk-averaging downsampler to reduce data volume by 99%.
+# Objective: Protect the data pipeline from impulse noise (point anomalies)
+# using Robust Statistics (Sliding Window + Median Absolute Deviation).
 
-RAW_DATA_FILE = "raw_sensor_data.csv"
-PROCESSED_DATA_FILE = "downsampled_data.csv"
-TOTAL_SAMPLES = 100000  # Simulate 100,000 high-frequency sensor readings
-DOWNSAMPLE_RATE = 100   # Compress every 100 samples into 1
+RAW_DATA_FILE = "raw_noisy_data.csv"
+CLEAN_DATA_FILE = "clean_filtered_data.csv"
+TOTAL_SAMPLES = 500
+WINDOW_SIZE = 10  # We keep the last 10 samples in memory
+MAD_THRESHOLD = 3.0 # Reject points that are 3 MADs away from the median
 
-def high_frequency_sensor_stream(num_samples):
+def unstable_sensor_stream(num_samples):
     """
-    Simulates an Edge sensor (e.g., 1000 Hz vibration sensor).
-    Uses 'yield' to act as a Generator, keeping memory footprint at O(1).
+    Simulates a sensor that normally outputs values around 25.0,
+    but occasionally suffers from massive electronic interference (Flash Crashes/Spikes).
     """
-    for _ in range(num_samples):
-        # Simulate a baseline signal of 5.0 with high-frequency random noise
-        reading = 5.0 + random.uniform(-2.0, 2.0)
-        yield reading
+    for i in range(num_samples):
+        # 10% chance of a massive anomaly
+        if random.random() < 0.10:
+            yield random.choice([0.0, 100.0]) # Impulse noise
+        else:
+            yield 25.0 + random.uniform(-1.0, 1.0) # Normal reading
 
-def process_raw_stream():
-    """Reads the stream and writes everything directly to disk (Heavy I/O)."""
-    print(f"[*] Processing {TOTAL_SAMPLES} RAW samples...")
-    sensor = high_frequency_sensor_stream(TOTAL_SAMPLES)
+def process_without_filter():
+    """[Poor Architecture] Saves everything directly to disk. (GIGO)"""
+    print(f"\n[*] Processing {TOTAL_SAMPLES} samples WITHOUT filtering...")
+    sensor = unstable_sensor_stream(TOTAL_SAMPLES)
     
+    anomalies_recorded = 0
     with open(RAW_DATA_FILE, mode='w', newline='') as file:
         writer = csv.writer(file)
         for value in sensor:
             writer.writerow([value])
-            
-    raw_size = os.path.getsize(RAW_DATA_FILE) / 1024
-    print(f"    -> Raw Data File Size: {raw_size:.2f} KB")
+            if value > 50.0 or value < 10.0:
+                anomalies_recorded += 1
+                
+    print(f"    -> Warning: {anomalies_recorded} anomalies written to database!")
 
 
-def process_and_downsample_stream():
+def process_with_mad_filter():
     """
-    Reads the stream, applies chunk-averaging, and writes the reduced data.
+    [Good Architecture] Uses a sliding window and Robust Statistics (MAD)
+    to reject anomalies in real-time before they reach the database.
     """
-    print(f"\n[*] Processing and DOWNSAMPLING (Rate: {DOWNSAMPLE_RATE}:1)...")
-    sensor = high_frequency_sensor_stream(TOTAL_SAMPLES)
+    print(f"\n[*] Processing {TOTAL_SAMPLES} samples WITH MAD Filter...")
+    sensor = unstable_sensor_stream(TOTAL_SAMPLES)
     
-    with open(PROCESSED_DATA_FILE, mode='w', newline='') as file:
+    # deque with maxlen acts as an automatic sliding window O(W) memory
+    window = deque(maxlen=WINDOW_SIZE)
+    anomalies_rejected = 0
+    
+    with open(CLEAN_DATA_FILE, mode='w', newline='') as file:
         writer = csv.writer(file)
         
-        buffer = []
-        # TODO 1: Iterate through the 'sensor' generator
         for value in sensor:
+            # If the window isn't full yet, just add the value and write it
+            if len(window) < WINDOW_SIZE:
+                window.append(value)
+                writer.writerow([value])
+                continue
+                
+            # TODO 1: Calculate the 'current_median' of the values in the 'window'
+            # Hint: Use statistics.median()
             
-            # TODO 2: Append the 'value' to the 'buffer'
-            buffer.append(value)
             
-            # TODO 3: Check if the buffer length has reached the DOWNSAMPLE_RATE
-            if len(buffer) == DOWNSAMPLE_RATE:
-                
-                # TODO 4: Calculate the average of the buffer
-                average_val = sum(buffer) / len(buffer)
-                
-                # Write the averaged value to disk and clear the buffer
-                writer.writerow([average_val])
-                buffer.clear()
-                
-    processed_size = os.path.getsize(PROCESSED_DATA_FILE) / 1024
-    print(f"    -> Downsampled File Size: {processed_size:.2f} KB")
-
+            # TODO 2: Calculate the Absolute Deviations for each item in the window
+            # deviations = [abs(x - current_median) for x in window]
+            
+            
+            # TODO 3: Calculate the Median Absolute Deviation (MAD)
+            # Hint: It's the median of the 'deviations' list. Add 0.001 to avoid division by zero later.
+            # mad = ... + 0.001
+            
+            
+            # TODO 4: Calculate the deviation of the new 'value' from the 'current_median'
+            # diff = abs(value - current_median)
+            
+            
+            # TODO 5: Reject or Accept the value based on the MAD_THRESHOLD
+            # if (diff / mad) > MAD_THRESHOLD:
+            #     anomalies_rejected += 1
+            #     # Do not append to window, do not write to file (Reject)
+            # else:
+            #     # Append to window, write to file (Accept)
+            
+            pass # Remove this pass when you implement the logic
+            
+    print(f"    -> Success: {anomalies_rejected} anomalies successfully blocked!")
 
 if __name__ == "__main__":
-    print("=== Edge Pipeline: Data Acquisition & Filtering ===")
+    print("=== Edge Pipeline: Robustness & Anomaly Detection ===")
     
-    start_time = time.time()
-    process_raw_stream()
-    raw_duration = time.time() - start_time
-    print(f"    -> Raw Processing Time: {raw_duration:.4f} sec")
-    
-    start_time = time.time()
-    process_and_downsample_stream()
-    downsample_duration = time.time() - start_time
-    print(f"    -> Downsample Processing Time: {downsample_duration:.4f} sec")
+    process_without_filter()
+    process_with_mad_filter()
     
     print("\n===========================================")
-    print("Experiment completed! Observe the massive reduction in file size.")
+    print("Experiment completed. Please check the difference between the two CSV files.")
